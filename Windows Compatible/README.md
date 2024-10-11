@@ -66,11 +66,98 @@ python "C:\<Path you saved the file to>\HEC_log_retrieval.py" --client-id YOUR_C
    - A log file named `HEC_log_retrieval.log` records activities and errors.
   
 
-## Section 2 - Automated
+## Section 2: Automated Script
 
 ### Overview
 
-The automated script runs continuously, retrieving logs every 5 minutes. It automatically adjusts the time frame for each interval and saves results to `log.txt` or `log.csv` based on user preference.
+The automated script runs continuously, retrieving logs every 5 minutes. It automatically adjusts the time frame for each interval and saves results to log.txt or log.csv based on user preference.
+
+**Running the Automated Script**
+1. Download the Script:
+
+   - Save the script on your system.
+
+2. Install Required Libraries:
+   - Open Command Prompt and run:
+   - ```
+      pip install requests
+     ```
+3. Run the Script with Command-Line Arguments:
+   - Run the script using:
+   - ```
+      python "C:\Users\krishnama\HEC_log_retrieval.py" --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host YOUR_HOST --output-format txt
+     ```
+   - Replace `YOUR_CLIENT_ID`, `YOUR_ACCESS_KEY`, and `YOUR_HOST` with your actual credentials - Output is in .txt for above.
+   - For CSV output:
+   - ```
+      python "C:\file path\krishnama\HEC_log_retrieval.py" --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host YOUR_HOST --output-format csv
+     ```
+4. Run the script in the background
+   - Use Task Scheduler or create a .bat file (as described below) to keep the script running continuously.
+  
+### Running the Script Using Task Scheduler
+
+1. Open Task Scheduler:
+
+    - Press Win + R, type **taskschd.msc**, and press Enter.
+2. Create a New Task:
+    
+    - Click on **Create Task** and give it a name (e.g., "HEC Log Retrieval").
+
+3. Set the Trigger:
+
+    - In the **Triggers** tab, click **New**.
+    - Set the trigger to start **Daily** or At **startup**, and repeat every 5 minutes.
+
+4. Set the Action:
+
+    - In the **Actions** tab, click **New**.
+    - For **Program/script**, browse to `python.exe`.
+    - For **Add arguments**, add:
+    - ```
+      "C:\File path\HEC_log_retrieval.py" --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host YOUR_HOST --output-format [txt/csv]
+      ```
+5. Finish:
+
+    - Click OK to save the task and start it.
+  
+
+### Running the Script Using a `.bat` File
+
+1. Create `.bat` file
+   - Open Notepad and add:
+      ```
+      @echo off
+      :start
+      python "C:\Users\krishnama\HEC_log_retrieval.py" --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host YOUR_HOST --output-format txt
+      timeout /t 300
+      goto start
+    ```
+  - Replace the script path and credentials as needed.
+  - Save as `run_hec_log.bat`.
+
+2. Run the `.bat` File:
+   - Double-click the .bat file to start.
+   - The script will run in a loop, executing every 5 minutes.
+
+3. Stoppging the Script:
+   - Close the command window or stop the task from Task Scheduler.
+
+## Output
+
+-Logs are saved as `log.txt` or `log.csv` based on the chosen format.
+
+- Each retrieval appends new data to the respective file.
+
+- For CSV format, fields like recipients are extracted from the description field.
+
+- Activities and errors are recorded in HEC_log_retrieval.log.
+
+- If one ones to customize it to the likes off interval, or change in file names, simply open the script and make the require changes.
+
+# Stay Safe & Secure <3
+### For any requests, can reach out to me :)
+
 
 
 
