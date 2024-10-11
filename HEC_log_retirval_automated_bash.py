@@ -34,12 +34,16 @@ class ApiClient:
                 "accessKey": self.access_key
             }
             timestamp = time()
-            res = requests.post(f'https://{self.host}/auth/external', json=payload)
-            res.raise_for_status()
-            res_data = res.json()['data']
-            self.token = res_data['token']
-            self.token_expiry = timestamp + res_data['expiresIn']
-            logging.info("Bearer token retrieved successfully.")
+            try:
+                res = requests.post(f'https://{self.host}/auth/external', json=payload, timeout=10)
+                res.raise_for_status()
+                res_data = res.json()['data']
+                self.token = res_data['token']
+                self.token_expiry = timestamp + res_data['expiresIn']
+                logging.info("Bearer token retrieved successfully.")
+            except requests.exceptions.RequestException as e:
+                logging.error(f"Failed to retrieve bearer token: {e}")
+                raise e
         return self.token
 
     def headers(self):
@@ -52,15 +56,20 @@ class ApiClient:
         return headers
 
     def call_api(self, method: str, endpoint: str, params: dict = None, body: dict = None):
-        res = requests.request(
-            method, 
-            f'https://{self.host}/app/hec-api/{self.api_version}/{endpoint}',
-            headers=self.headers(), 
-            params=params, 
-            json=body
-        )
-        res.raise_for_status()
-        return res.json()
+        try:
+            res = requests.request(
+                method, 
+                f'https://{self.host}/app/hec-api/{self.api_version}/{endpoint}',
+                headers=self.headers(), 
+                params=params, 
+                json=body,
+                timeout=10
+            )
+            res.raise_for_status()
+            return res.json()
+        except requests.exceptions.RequestException as e:
+            logging.error(f"API request failed: {e}")
+            raise e
 
     def query_events(self, start_date: str, end_date: str = None):
         request_data = {
@@ -89,34 +98,43 @@ def adjust_entity_link(entity_link, host):
         return entity_link.replace('portal.checkpoint.com', 'in.portal.checkpoint.com')
     return entity_link
 
-def save_logs_to_txt(events, host):
-    """
-    Saves logs to a .txt file.
-    """
+
+def save_logs_to_txt(events, end_date, host):
     with open("HEC_log.txt", "a") as file:
         for event in events.get('responseData', []):
+            # Adjust the entity link if needed
             event['entityLink'] = adjust_entity_link(event.get('entityLink', ''), host)
         file.write(json.dumps(events, indent=4))
         file.write("\n")
-    logging.info("Events successfully appended to 'HEC_log.txt'.")
+    logging.info(f"Events successfully appended to 'HEC_log.txt' at {end_date}.")
 
-def save_logs_to_csv(events, host):
-    """
-    Saves logs to a .csv file.
-    """
+def save_logs_to_csv(events, end_date, host):
     response_data = events.get('responseData', [])
     
     if response_data:
         try:
             with open("HEC_log.csv", "a", newline='') as file:
                 writer = csv.writer(file)
+                # Write the header if the file is empty
                 if file.tell() == 0:
                     writer.writerow([
-                        "eventId", "customerId", "saas", "entityId", "state", 
-                        "type", "confidenceIndicator", "eventCreated", 
-                        "severity", "description", "senderAddress", "data", 
-                        "recipients", "entityLink", "actionType", 
-                        "actionCreateTime", "actionRelatedEntityId"
+                        "eventId", 
+                        "customerId", 
+                        "saas", 
+                        "entityId", 
+                        "state", 
+                        "type", 
+                        "confidenceIndicator", 
+                        "eventCreated", 
+                        "severity", 
+                        "description", 
+                        "senderAddress", 
+                        "data",
+                        "recipients",
+                        "entityLink", 
+                        "actionType", 
+                        "actionCreateTime", 
+                        "actionRelatedEntityId"
                     ])
                 
                 for event in response_data:
@@ -152,9 +170,11 @@ def save_logs_to_csv(events, host):
                     else:
                         writer.writerow(base_data + ['', '', ''])
                         
-            logging.info("Events successfully appended to 'HEC_log.csv'.")
+            logging.info(f"Events successfully appended to 'HEC_log.csv' at {end_date}.")
+        except PermissionError as e:
+            logging.error(f"Failed to write to log.csv due to permission error: {e}")
         except Exception as e:
-            logging.error(f"An error occurred while saving to CSV: {e}")
+            logging.error(f"An unexpected error occurred while saving logs: {e}")
 
 def main():
     # Set up argument parser
@@ -181,9 +201,9 @@ def main():
         try:
             events = client.query_events(start_date, end_date)
             if args.output_format == 'txt':
-                save_logs_to_txt(events, args.host)
+                save_logs_to_txt(events, end_date)
             elif args.output_format == 'csv':
-                save_logs_to_csv(events, args.host)
+                save_logs_to_csv(events, end_date)
         except Exception as e:
             logging.error(f"An error occurred: {e}")
 
