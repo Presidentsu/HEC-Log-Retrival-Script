@@ -3,7 +3,8 @@ import logging
 from uuid import uuid4
 from time import time
 import json
-from datetime import datetime, timedelta
+import csv
+from datetime import datetime
 import argparse
 
 # Configure logging
@@ -79,20 +80,107 @@ class ApiClient:
         }
         return self.call_api('POST', 'event/query', body=payload)
 
-def save_logs_to_file(events, end_date):
-    # Check if there are any records to write before saving to the file
-    if events.get('responseEnvelope', {}).get('recordsNumber', 0) > 0:
+def adjust_entity_link(entity_link, host):
+    """
+    Adjusts the entity link based on the provided host.
+    If the host is 'cloudinfra-gw.in.portal.checkpoint.com', replace 'portal.checkpoint.com'
+    in the entity link with 'in.portal.checkpoint.com'.
+    """
+    if host == 'cloudinfra-gw.in.portal.checkpoint.com':
+        return entity_link.replace('portal.checkpoint.com', 'in.portal.checkpoint.com')
+    return entity_link
+
+def save_logs_to_txt(events, end_date, host):
+    with open("HEC_log.txt", "a") as file:
+        # Adjust entity links if required
+        if host == 'cloudinfra-gw.in.portal.checkpoint.com':
+            for event in events.get('responseData', []):
+                event['entityLink'] = adjust_entity_link(event.get('entityLink', ''), host)
+        file.write(json.dumps(events, indent=4))
+        file.write("\n")
+    logging.info(f"Events successfully appended to 'HEC_log.txt' at {end_date}.")
+
+import re
+
+def extract_recipient(description):
+    """
+    Extracts the recipient's email from the description using a regular expression.
+    """
+    # Regex pattern to extract email addresses from the description
+    match = re.search(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", description)
+    return match.group(1) if match else ""
+
+
+def save_logs_to_csv(events, end_date, host):
+    response_data = events.get('responseData', [])
+    
+    if response_data:
         try:
-            with open("log_HEC.txt", "a") as file:
-                file.write(json.dumps(events, indent=4))
-                file.write("\n")
-            logging.info(f"Events successfully appended to 'log.txt' at {end_date}.")
+            with open("HEC_log.csv", "a", newline='') as file:
+                writer = csv.writer(file)
+                # Write the header if the file is empty
+                if file.tell() == 0:
+                    writer.writerow([
+                        "eventId", 
+                        "customerId", 
+                        "saas", 
+                        "entityId", 
+                        "state", 
+                        "type", 
+                        "confidenceIndicator", 
+                        "eventCreated", 
+                        "severity", 
+                        "description", 
+                        "senderAddress", 
+                        "data",
+                        "recipients",
+                        "entityLink", 
+                        "actionType", 
+                        "actionCreateTime", 
+                        "actionRelatedEntityId"
+                    ])
+                
+                for event in response_data:
+                    description = event.get('description', '')
+                    recipients = extract_recipient(description)
+                    entity_link = adjust_entity_link(event.get('entityLink', ''), host)
+                    
+                    base_data = [
+                        event.get('eventId', ''),
+                        event.get('customerId', ''),
+                        event.get('saas', ''),
+                        event.get('entityId', ''),
+                        event.get('state', ''),
+                        event.get('type', ''),
+                        event.get('confidenceIndicator', ''),
+                        event.get('eventCreated', ''),
+                        event.get('severity', ''),
+                        description,
+                        event.get('senderAddress', ''),
+                        json.dumps(event.get('data', '')),
+                        recipients,
+                        entity_link
+                    ]
+
+                    actions = event.get('actions', [])
+                    if actions:
+                        for action in actions:
+                            writer.writerow(base_data + [
+                                action.get('actionType', ''),
+                                action.get('createTime', ''),
+                                action.get('relatedEntityId', '')
+                            ])
+                    else:
+                        writer.writerow(base_data + ['', '', ''])
+                        
+            logging.info(f"Events successfully appended to 'HEC_log.csv' at {end_date}.")
         except PermissionError as e:
-            logging.error(f"Failed to write to log.txt due to permission error: {e}")
+            logging.error(f"Failed to write to log.csv due to permission error: {e}")
         except Exception as e:
             logging.error(f"An unexpected error occurred while saving logs: {e}")
-    else:
-        logging.info("No events found for the given time frame. Skipping log write.")
+
+
+
 
 def main():
     # Set up argument parser
@@ -102,6 +190,7 @@ def main():
     parser.add_argument('--host', required=True, help='API Host (e.g., cloudinfra-gw-us.portal.checkpoint.com)')
     parser.add_argument('--start-time', required=True, help='Start time (ISO 8601 format, e.g., 2024-01-01T00:00:00Z)')
     parser.add_argument('--end-time', required=True, help='End time (ISO 8601 format, e.g., 2024-01-01T05:00:00Z)')
+    parser.add_argument('--output-format', required=True, choices=['txt', 'csv'], help='Output format: txt or csv')
     args = parser.parse_args()
 
     # Create the API client with command-line arguments
@@ -111,7 +200,10 @@ def main():
 
     try:
         events = client.query_events(args.start_time, args.end_time)
-        save_logs_to_file(events, args.end_time)
+        if args.output_format == 'txt':
+            save_logs_to_txt(events, args.end_time)
+        elif args.output_format == 'csv':
+            save_logs_to_csv(events, args.end_time)
     except Exception as e:
         logging.error(f"An error occurred during log retrieval: {e}")
 
