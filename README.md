@@ -156,6 +156,15 @@ The 5 min parameter is hardcoded, one can simply edit it out and increase/decrea
 
 5. Fix is in place, doing last phase of test to see if its working as intended, provide a weeks time till Oct 3rd week, should be available where the script skips write if there is no log output in last 5 mins.
 
+## Updates & Fixes
+
+1. Added new packages that are compaitable for windows based executions.
+
+2. Added exe package for manual and now one can choose what output they want i.e. in csv or txt.
+
+3. Added new option for one to choose what file format they want the output in i.e. csv or txt.
+
+4. For those in India Host, when we extract the logs where the entityLink is broken as HEC sends logs under `portal.checkpoint.com` rather than `in.portal.checkpoint.com` now the script will automatically correct it the moment one enters the host as India.
 
 #### For any further requirement, please reach out to me 
 
