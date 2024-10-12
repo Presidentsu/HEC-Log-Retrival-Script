@@ -60,11 +60,16 @@ The 5 min parameter is hardcoded, one can simply edit it out and increase/decrea
      ```
 3. **Run the Script** using (**Automated script**):
    - ```
-     nohup python3 hec_log_retrieval_automated.py --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host YOUR_HOST &
+     nohup python3 your_script.py --client-id YOUR_CLIENT_ID --access-key YOUR_ACCESS_KEY --host host-URI --file-type txt/csv/syslog --output-file /path/to/file.txt
+ &
      ```
+  - Now the automated script supports output support of txt, csv, syslog.
+  - One can choose it via enabling flag `--file-type` and mention the type one wants to write the logs to.
+  - Added option for one to choose where the output can be written to by enabling flag `--output-file`
+
   - Examples
     -  ```
-          nohup python3 hec_log_retrieval_automated.py --client-id 123456 --access-key abcdef123456 --host cloudinfra-gw-us.portal.checkpoint.com
+          nohup python3 hec_log_retrieval_automated.py --client-id 123456 --access-key abcdef123456 --host cloudinfra-gw-us.portal.checkpoint.com --file-type csv --output-file /path/to/file.csv
 
        ```
     - **Manual**
