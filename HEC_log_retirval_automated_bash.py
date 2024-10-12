@@ -6,9 +6,11 @@ import csv
 import argparse
 import logging
 import syslog
-import os
-import re
 from datetime import datetime, timedelta
+import os
+
+# Buffer size for batch processing
+BATCH_SIZE = 100  # Adjust this depending on your performance needs
 
 class ApiClient:
     def __init__(self, client_id: str, access_key: str, host: str, api_version: str = 'v1.0'):
@@ -56,44 +58,46 @@ class ApiClient:
         res.raise_for_status()
         return res.json()
 
+    # Handle pagination for large result sets
     def query_events(self, start_date: str, end_date: str = None):
+        all_events = []
         request_data = {
             'startDate': start_date,
             'endDate': end_date
         }
-        payload = {
-            'requestData': request_data
-        }
-        return self.call_api('POST', 'event/query', body=payload)
+        payload = {'requestData': request_data}
+        
+        # Initial request
+        response = self.call_api('POST', 'event/query', body=payload)
+        all_events.extend(response.get('responseData', []))
+        
+        # Handle pagination (assuming API provides a 'nextPageToken' or similar mechanism)
+        while response.get('nextPageToken'):
+            payload['requestData']['pageToken'] = response['nextPageToken']
+            response = self.call_api('POST', 'event/query', body=payload)
+            all_events.extend(response.get('responseData', []))
+        
+        return all_events
 
-
-# Helper function to extract recipient from the description
-def extract_recipient(description):
-    match = re.search(r"([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})", description)
-    return match.group(1) if match else ""
-
-# Helper function to adjust the entity link based on the host
-def adjust_entity_link(entity_link, host):
-    if host == 'cloudinfra-gw.in.portal.checkpoint.com' and 'portal.checkpoint.com' in entity_link:
-        return entity_link.replace('portal.checkpoint.com', 'in.portal.checkpoint.com')
-    return entity_link
-
-# Function to save logs to TXT
-def save_to_txt(log_data, file_path, append=True):
+# Buffer-based function to save logs to TXT
+def save_to_txt(log_data, file_path, buffer_size, append=True):
     mode = 'a' if append else 'w'
     with open(file_path, mode) as file:
-        file.write(json.dumps(log_data, indent=4))
-        file.write("\n")
-    print(f"Logs appended to {file_path}")
+        for i in range(0, len(log_data), buffer_size):
+            batch = log_data[i:i + buffer_size]
+            for event in batch:
+                file.write(json.dumps(event, indent=4))
+                file.write("\n")
+        print(f"Batch of {buffer_size} events appended to {file_path}")
 
-# Function to save logs to CSV
-def save_to_csv(log_data, file_path, host, append=True):
+# Buffer-based function to save logs to CSV
+def save_to_csv(log_data, file_path, host, buffer_size, append=True):
     mode = 'a' if append else 'w'
     file_exists = os.path.isfile(file_path)
 
     with open(file_path, mode, newline='') as file:
         writer = csv.writer(file)
-        if file.tell() == 0:
+        if file.tell() == 0:  # Write header only once
             writer.writerow([
                 "eventId", 
                 "customerId", 
@@ -114,44 +118,47 @@ def save_to_csv(log_data, file_path, host, append=True):
                 "actionRelatedEntityId"
             ])
 
-        for event in log_data.get('responseData', []):
-            description = event.get('description', '')
-            recipients = extract_recipient(description)
-            entity_link = adjust_entity_link(event.get('entityLink', ''), host)
+        # Process in batches
+        for i in range(0, len(log_data), buffer_size):
+            batch = log_data[i:i + buffer_size]
+            for event in batch:
+                description = event.get('description', '')
+                recipients = extract_recipient(description)
+                entity_link = adjust_entity_link(event.get('entityLink', ''), host)
 
-            base_data = [
-                event.get('eventId', ''),
-                event.get('customerId', ''),
-                event.get('saas', ''),
-                event.get('entityId', ''),
-                event.get('state', ''),
-                event.get('type', ''),
-                event.get('confidenceIndicator', ''),
-                event.get('eventCreated', ''),
-                event.get('severity', ''),
-                description,
-                event.get('senderAddress', ''),
-                json.dumps(event.get('data', '')),
-                recipients,
-                entity_link
-            ]
+                base_data = [
+                    event.get('eventId', ''),
+                    event.get('customerId', ''),
+                    event.get('saas', ''),
+                    event.get('entityId', ''),
+                    event.get('state', ''),
+                    event.get('type', ''),
+                    event.get('confidenceIndicator', ''),
+                    event.get('eventCreated', ''),
+                    event.get('severity', ''),
+                    description,
+                    event.get('senderAddress', ''),
+                    json.dumps(event.get('data', '')),
+                    recipients,
+                    entity_link
+                ]
 
-            actions = event.get('actions', [])
-            if actions:
-                for action in actions:
-                    writer.writerow(base_data + [
-                        action.get('actionType', ''),
-                        action.get('createTime', ''),
-                        action.get('relatedEntityId', '')
-                    ])
-            else:
-                writer.writerow(base_data + ['', '', ''])
+                actions = event.get('actions', [])
+                if actions:
+                    for action in actions:
+                        writer.writerow(base_data + [
+                            action.get('actionType', ''),
+                            action.get('createTime', ''),
+                            action.get('relatedEntityId', '')
+                        ])
+                else:
+                    writer.writerow(base_data + ['', '', ''])
 
-    print(f"Logs appended to {file_path}")
+        print(f"Batch of {buffer_size} events appended to {file_path}")
 
-# Function to send logs to syslog
+# Function to send logs to syslog (no change needed for scalability here)
 def save_to_syslog(log_data):
-    for event in log_data.get('responseData', []):
+    for event in log_data:
         message = f"Event ID: {event.get('eventId')}, Data: {json.dumps(event)}"
         syslog.syslog(syslog.LOG_INFO, message)
     print("Logs sent to syslog")
@@ -188,9 +195,9 @@ def main():
 
             # Save logs based on the file type
             if args.file_type == 'txt':
-                save_to_txt(events, args.output_file)
+                save_to_txt(events, args.output_file, buffer_size=BATCH_SIZE)
             elif args.file_type == 'csv':
-                save_to_csv(events, args.output_file, args.host)
+                save_to_csv(events, args.output_file, args.host, buffer_size=BATCH_SIZE)
             elif args.file_type == 'syslog':
                 save_to_syslog(events)
 
