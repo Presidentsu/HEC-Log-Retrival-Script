@@ -171,6 +171,17 @@ The 5 min parameter is hardcoded, one can simply edit it out and increase/decrea
 
 4. For those in India Host, when we extract the logs where the entityLink is broken as HEC sends logs under `portal.checkpoint.com` rather than `in.portal.checkpoint.com` now the script will automatically correct it the moment one enters the host as India.
 
+**12/10 Update**
+
+1. For Bash automated script few optimization have been created.
+  - Key Optimizations:
+      - Batch File Writes:
+
+      - Instead of writing each event to the file one-by-one, events are now written in batches (default size: 100 events). This reduces the frequency of disk I/O operations, which improves performance when handling large amounts of data.
+      - Buffer Size:
+
+      - The `BATCH_SIZE` has been added and currently hard coded to 100, but can be edited and increased.
+
 #### For any further requirement, please reach out to me 
 
 
